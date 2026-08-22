@@ -3,7 +3,7 @@ import { useChatContext } from '../../context/ChatContext';
 import { AVAILABLE_MODELS, FALLBACK_STRATEGIES } from '../../utils/constants';
 import { 
   X, Key, Cpu, Thermometer, FileText, Check, Brain, Zap, 
-  Layers, RefreshCw, AlertTriangle, Activity
+  Layers, RefreshCw, AlertTriangle, Activity, Sparkles
 } from 'lucide-react';
 
 const SettingsModal = ({ onClose }) => {
@@ -41,12 +41,15 @@ const SettingsModal = ({ onClose }) => {
     return Math.round(stats.successRate);
   };
 
+  // Filter only free models
+  const freeModels = AVAILABLE_MODELS.filter(m => m.free);
+
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 backdrop-blur-sm animate-fade-in" onClick={onClose}>
       <div className="bg-white rounded-2xl max-w-md w-[90%] max-h-[90vh] overflow-y-auto shadow-2xl animate-slide-up" onClick={(e) => e.stopPropagation()}>
         <div className="flex justify-between items-center px-6 py-5 border-b border-gray-200 sticky top-0 bg-white z-10">
           <h2 className="text-xl font-semibold text-gray-800 m-0 flex items-center gap-2">
-            <Cpu size={20} className="text-primary-500" />
+            <Sparkles size={20} className="text-primary-500" />
             Settings
           </h2>
           <button 
@@ -87,12 +90,19 @@ const SettingsModal = ({ onClose }) => {
               onChange={(e) => setLocalSettings({ ...localSettings, model: e.target.value })}
               className="px-3 py-2 border border-gray-300 rounded-lg text-sm transition-colors duration-300 focus:outline-none focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20"
             >
-              {AVAILABLE_MODELS.map(model => (
-                <option key={model.id} value={model.id}>
-                  {model.name} {model.free ? '(Free)' : ''}
-                </option>
-              ))}
+              {freeModels.map(model => {
+                const successRate = getModelSuccessRate(model.id);
+                return (
+                  <option key={model.id} value={model.id}>
+                    {model.name} {successRate !== null ? `(${successRate}% success)` : ''}
+                  </option>
+                );
+              })}
             </select>
+            <small className="text-xs text-green-600 flex items-center gap-1">
+              <Sparkles size={12} />
+              Free models only
+            </small>
           </div>
 
           {/* Fallback Models */}
@@ -105,7 +115,7 @@ const SettingsModal = ({ onClose }) => {
               Select backup models to use if the primary model fails
             </p>
             <div className="flex flex-wrap gap-2">
-              {AVAILABLE_MODELS.filter(m => m.id !== localSettings.model).map(model => {
+              {freeModels.filter(m => m.id !== localSettings.model).map(model => {
                 const isSelected = localSettings.fallbackModels?.includes(model.id);
                 const successRate = getModelSuccessRate(model.id);
                 
@@ -134,6 +144,11 @@ const SettingsModal = ({ onClose }) => {
               <p className="text-xs text-yellow-600 flex items-center gap-1">
                 <AlertTriangle size={12} />
                 No fallback models selected
+              </p>
+            )}
+            {localSettings.fallbackModels?.length > 0 && (
+              <p className="text-xs text-green-600">
+                ✅ {localSettings.fallbackModels.length} fallback models selected
               </p>
             )}
           </div>
@@ -197,7 +212,7 @@ const SettingsModal = ({ onClose }) => {
                   type="number"
                   min="1"
                   max="10"
-                  value={localSettings.maxRetries || 3}
+                  value={localSettings.maxRetries || 5}
                   onChange={(e) => setLocalSettings({ ...localSettings, maxRetries: parseInt(e.target.value) })}
                   className="px-3 py-2 border border-gray-300 rounded-lg text-sm transition-colors duration-300 focus:outline-none focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20"
                 />
@@ -273,12 +288,15 @@ const SettingsModal = ({ onClose }) => {
                               {Math.round(stats.successRate)}%
                             </span>
                             <span className="text-gray-400">
-                              {stats.avgResponseTime}ms
+                              {Math.round(stats.avgResponseTime)}ms
                             </span>
                           </div>
                         </div>
                       ))}
                   </div>
+                  <small className="text-xs text-gray-400 mt-2 block">
+                    Success rate based on recent requests
+                  </small>
                 </div>
               )}
             </div>

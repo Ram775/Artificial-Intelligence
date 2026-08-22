@@ -27,6 +27,7 @@ export const ChatProvider = ({ children }) => {
   const [currentModel, setCurrentModel] = useState(null);
   const [modelPerformance, setModelPerformance] = useState({});
   const [failedModels, setFailedModels] = useState([]);
+  const [triedModels, setTriedModels] = useState([]);
 
   const sendChatMessage = useCallback(async (content) => {
     if (!content.trim()) return;
@@ -42,6 +43,7 @@ export const ChatProvider = ({ children }) => {
     setIsLoading(true);
     setError(null);
     setFailedModels([]);
+    setTriedModels([]);
 
     const assistantMessage = {
       id: (Date.now() + 1).toString(),
@@ -60,7 +62,7 @@ export const ChatProvider = ({ children }) => {
     }));
 
     try {
-      // Smart model selection
+      // Get model list
       const modelList = getSmartModelSelection(
         [settings.model, ...settings.fallbackModels],
         FALLBACK_STRATEGIES.SMART
@@ -71,8 +73,7 @@ export const ChatProvider = ({ children }) => {
 
       console.log('📋 Model selection:', {
         primary: primaryModel,
-        fallbacks: fallbackModels,
-        allModels: modelList
+        fallbacks: fallbackModels
       });
 
       if (settings.streamEnabled) {
@@ -104,7 +105,7 @@ export const ChatProvider = ({ children }) => {
           {
             primaryModel,
             fallbackModels,
-            maxRetries: settings.maxRetries || 3,
+            maxRetries: settings.maxRetries || 5,
             apiKey: apiKey || import.meta.env.VITE_OPENROUTER_API_KEY,
             reasoningEnabled: settings.reasoningEnabled,
             maxTokens: settings.maxTokens,
@@ -113,6 +114,7 @@ export const ChatProvider = ({ children }) => {
             onModelChange: (model) => {
               modelUsed = model;
               setCurrentModel(model);
+              setTriedModels(prev => [...prev, model]);
               setMessages(prev => 
                 prev.map(msg => 
                   msg.id === assistantMessage.id 
@@ -138,7 +140,7 @@ export const ChatProvider = ({ children }) => {
         const response = await sendMessageWithFallback(messagesForAPI, {
           primaryModel,
           fallbackModels,
-          maxRetries: settings.maxRetries || 3,
+          maxRetries: settings.maxRetries || 5,
           apiKey: apiKey || import.meta.env.VITE_OPENROUTER_API_KEY,
           reasoningEnabled: settings.reasoningEnabled,
           maxTokens: settings.maxTokens,
@@ -148,8 +150,10 @@ export const ChatProvider = ({ children }) => {
 
         const assistantResponse = response.choices[0]?.message?.content || 'No response received';
         const modelInfo = response._meta?.model || 'Unknown';
+        const triedModelsList = response._meta?.triedModels || [];
         
         setCurrentModel(modelInfo);
+        setTriedModels(triedModelsList);
         setMessages(prev => 
           prev.map(msg => 
             msg.id === assistantMessage.id 
@@ -159,7 +163,8 @@ export const ChatProvider = ({ children }) => {
                   isStreaming: false,
                   modelInfo: modelInfo,
                   attempts: response._meta?.attempts,
-                  fallbackUsed: response._meta?.fallbackUsed
+                  fallbackUsed: response._meta?.fallbackUsed,
+                  triedModels: triedModelsList
                 }
               : msg
           )
@@ -194,6 +199,7 @@ export const ChatProvider = ({ children }) => {
     setCurrentModel(null);
     setError(null);
     setFailedModels([]);
+    setTriedModels([]);
   };
 
   const updateSettings = (newSettings) => {
@@ -223,6 +229,7 @@ export const ChatProvider = ({ children }) => {
       currentModel,
       modelPerformance,
       failedModels,
+      triedModels,
       sendChatMessage,
       clearMessages,
       updateSettings,

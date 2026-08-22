@@ -1,69 +1,63 @@
-export const DEFAULT_MODEL = "dots-studio/dots-3-note-preview:free";
+export const DEFAULT_MODEL = 'dots-studio/dots-3-note-preview:free';
 
 export const AVAILABLE_MODELS = [
-  {
-    id: "dots-studio/dots-3-note-preview:free",
-    name: "Dots 3 Note (Free)",
-    provider: "OpenRouter",
+  { 
+    id: 'dots-studio/dots-3-note-preview:free', 
+    name: 'Dots 3 Note (Free)',
+    provider: 'Dots Studio',
     free: true,
+    description: 'Fast and efficient model'
   },
-  {
-    id: "openai/gpt-4o",
-    name: "GPT-4o",
-    provider: "OpenAI",
-    free: false,
+  { 
+    id: 'liquid/lfm-2.5-2.6b:free', 
+    name: 'LFM 2.5-2.6B (Free)',
+    provider: 'Liquid AI',
+    free: true,
+    description: 'Lightweight language model'
   },
-  {
-    id: "anthropic/claude-3.5-sonnet",
-    name: "Claude 3.5 Sonnet",
-    provider: "Anthropic",
-    free: false,
+  { 
+    id: 'nvidia/nemotron-3.5-lightning:free', 
+    name: 'Nemotron 3.5 Lightning (Free)',
+    provider: 'NVIDIA',
+    free: true,
+    description: 'Fast inference model'
   },
-  {
-    id: "google/gemini-pro",
-    name: "Gemini Pro",
-    provider: "Google",
-    free: false,
+  { 
+    id: 'thinkingmachines/inkling-small:free', 
+    name: 'Inkling Small (Free)',
+    provider: 'Thinking Machines',
+    free: true,
+    description: 'Small and efficient model'
   },
-  {
-    id: "meta-llama/llama-3.3-70b-instruct",
-    name: "Llama 3.3 70B",
-    provider: "Meta",
-    free: false,
-  },
-  {
-    id: "mistralai/mistral-7b-instruct",
-    name: "Mistral 7B",
-    provider: "Mistral",
-    free: false,
-  },
-  {
-    id: "cohere/command-r",
-    name: "Command R",
-    provider: "Cohere",
-    free: false,
-  },
+  { 
+    id: 'poolside/laguna-s-2.1:free', 
+    name: 'Laguna S 2.1 (Free)',
+    provider: 'Poolside',
+    free: true,
+    description: 'Balanced performance model'
+  }
 ];
+
+export const FREE_MODELS_ONLY = true;
 
 export const DEFAULT_SETTINGS = {
   model: DEFAULT_MODEL,
   fallbackModels: [
-    "openai/gpt-4o",
-    "anthropic/claude-3.5-sonnet",
-    "google/gemini-pro",
+    'liquid/lfm-2.5-2.6b:free',
+    'nvidia/nemotron-3.5-lightning:free',
+    'thinkingmachines/inkling-small:free',
+    'poolside/laguna-s-2.1:free'
   ],
   reasoningEnabled: true,
   maxTokens: 1000,
   temperature: 0.7,
   topP: 0.9,
   streamEnabled: true,
-  maxRetries: 3,
-  timeout: 30000,
+  maxRetries: 5,
+  timeout: 30000
 };
 
 export const FALLBACK_STRATEGIES = {
-  SEQUENTIAL: "sequential", // Try models one by one
-  ROUND_ROBIN: "round_robin", // Distribute load across models
-  RANDOM: "random", // Randomly pick a model
-  SMART: "smart", // Based on previous success rates
+  SEQUENTIAL: 'sequential',
+  SMART: 'smart'
 };

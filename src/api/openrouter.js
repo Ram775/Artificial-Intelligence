@@ -10,8 +10,13 @@ const modelPerformance = new Map();
 export const sendMessageWithFallback = async (messages, options = {}) => {
   const {
     primaryModel = 'dots-studio/dots-3-note-preview:free',
-    fallbackModels = ['openai/gpt-4o', 'anthropic/claude-3.5-sonnet'],
-    maxRetries = 3,
+    fallbackModels = [
+      'liquid/lfm-2.5-2.6b:free',
+      'nvidia/nemotron-3.5-lightning:free',
+      'thinkingmachines/inkling-small:free',
+      'poolside/laguna-s-2.1:free'
+    ],
+    maxRetries = 5,
     apiKey = import.meta.env.VITE_OPENROUTER_API_KEY,
     ...otherOptions
   } = options;
@@ -23,9 +28,11 @@ export const sendMessageWithFallback = async (messages, options = {}) => {
   // Create model list with primary first, then fallbacks
   const modelList = [primaryModel, ...fallbackModels];
   let lastError = null;
+  const triedModels = [];
 
   for (let i = 0; i < Math.min(modelList.length, maxRetries); i++) {
     const model = modelList[i];
+    triedModels.push(model);
     
     try {
       console.log(`🔄 Attempting with model: ${model} (${i + 1}/${Math.min(modelList.length, maxRetries)})`);
@@ -49,7 +56,8 @@ export const sendMessageWithFallback = async (messages, options = {}) => {
           model,
           responseTime,
           attempts: i + 1,
-          fallbackUsed: i > 0
+          fallbackUsed: i > 0,
+          triedModels
         }
       };
     } catch (error) {
@@ -76,16 +84,23 @@ export const sendMessageWithFallback = async (messages, options = {}) => {
     }
   }
 
-  throw new Error(`All models failed. Last error: ${lastError?.message || 'Unknown error'}`);
+  throw new Error(`All models failed. Tried: ${triedModels.join(', ')}. Last error: ${lastError?.message || 'Unknown error'}`);
 };
 
 // Function to send streaming message with fallback
 export const sendStreamingMessageWithFallback = async (messages, onChunk, options = {}) => {
   const {
     primaryModel = 'dots-studio/dots-3-note-preview:free',
-    fallbackModels = ['openai/gpt-4o', 'anthropic/claude-3.5-sonnet'],
-    maxRetries = 3,
+    fallbackModels = [
+      'liquid/lfm-2.5-2.6b:free',
+      'nvidia/nemotron-3.5-lightning:free',
+      'thinkingmachines/inkling-small:free',
+      'poolside/laguna-s-2.1:free'
+    ],
+    maxRetries = 5,
     apiKey = import.meta.env.VITE_OPENROUTER_API_KEY,
+    onModelChange = null,
+    onModelFail = null,
     ...otherOptions
   } = options;
 
@@ -95,12 +110,19 @@ export const sendStreamingMessageWithFallback = async (messages, onChunk, option
 
   const modelList = [primaryModel, ...fallbackModels];
   let lastError = null;
+  const triedModels = [];
 
   for (let i = 0; i < Math.min(modelList.length, maxRetries); i++) {
     const model = modelList[i];
+    triedModels.push(model);
     
     try {
       console.log(`🔄 Streaming with model: ${model} (${i + 1}/${Math.min(modelList.length, maxRetries)})`);
+      
+      // Notify model change
+      if (onModelChange) {
+        onModelChange(model);
+      }
       
       const startTime = Date.now();
       await sendStreamingMessage(messages, onChunk, {
@@ -120,13 +142,19 @@ export const sendStreamingMessageWithFallback = async (messages, onChunk, option
           model,
           responseTime,
           attempts: i + 1,
-          fallbackUsed: i > 0
+          fallbackUsed: i > 0,
+          triedModels
         }
       };
     } catch (error) {
       lastError = error;
       const errorMessage = error.response?.data?.error?.message || error.message;
       console.warn(`❌ Streaming model ${model} failed: ${errorMessage}`);
+      
+      // Notify model failure
+      if (onModelFail) {
+        onModelFail(model, error);
+      }
       
       // Track failed response
       trackModelPerformance(model, false);
@@ -145,7 +173,7 @@ export const sendStreamingMessageWithFallback = async (messages, onChunk, option
     }
   }
 
-  throw new Error(`All models failed for streaming. Last error: ${lastError?.message || 'Unknown error'}`);
+  throw new Error(`All models failed for streaming. Tried: ${triedModels.join(', ')}. Last error: ${lastError?.message || 'Unknown error'}`);
 };
 
 // Core sendMessage function
@@ -395,25 +423,6 @@ export const getSmartModelSelection = (models, strategy = 'smart') => {
         // Then by response time
         return (aStats.avgResponseTime || Infinity) - (bStats.avgResponseTime || Infinity);
       });
-    }
-
-    case 'round_robin': {
-      // Simple round robin based on last used
-      return availableModels.sort((a, b) => {
-        const aStats = performance[a];
-        const bStats = performance[b];
-        return (aStats?.lastUsed || 0) - (bStats?.lastUsed || 0);
-      });
-    }
-
-    case 'random': {
-      // Shuffle the array
-      const shuffled = [...availableModels];
-      for (let i = shuffled.length - 1; i > 0; i--) {
-        const j = Math.floor(Math.random() * (i + 1));
-        [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
-      }
-      return shuffled;
     }
 
     default: {

@@ -3,10 +3,10 @@ import { useChatContext } from '../../context/ChatContext';
 import ChatMessage from './ChatMessage';
 import TypingIndicator from '../UI/TypingIndicator';
 import EmptyState from '../UI/EmptyState';
-import { AlertCircle } from 'lucide-react';
+import { AlertCircle, RefreshCw } from 'lucide-react';
 
 const ChatMessages = () => {
-  const { messages, isLoading, error, failedModels } = useChatContext();
+  const { messages, isLoading, error, failedModels, triedModels } = useChatContext();
   const messagesEndRef = useRef(null);
 
   useEffect(() => {
@@ -19,6 +19,15 @@ const ChatMessages = () => {
         <EmptyState />
       ) : (
         <>
+          {/* Show tried models info */}
+          {triedModels.length > 0 && !isLoading && (
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-2 flex items-center gap-2 text-xs text-blue-700">
+              <RefreshCw size={14} />
+              <span>Models tried: {triedModels.join(' → ')}</span>
+            </div>
+          )}
+
+          {/* Show failed models */}
           {failedModels.length > 0 && (
             <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3 flex items-start gap-2 text-sm text-yellow-800">
               <AlertCircle size={16} className="flex-shrink-0 mt-0.5" />
@@ -32,11 +41,14 @@ const ChatMessages = () => {
               </div>
             </div>
           )}
+
+          {/* Messages */}
           {messages.map((message, index) => (
             <ChatMessage key={index} message={message} />
           ))}
         </>
       )}
+      
       {isLoading && (
         <div className="flex gap-2.5 max-w-[85%] self-start animate-slide-in">
           <div className="w-8 h-8 rounded-full flex items-center justify-center text-base bg-gray-200 flex-shrink-0">
@@ -45,12 +57,14 @@ const ChatMessages = () => {
           <TypingIndicator />
         </div>
       )}
+      
       {error && !isLoading && (
         <div className="bg-red-50 border border-red-200 rounded-lg p-3 text-sm text-red-700 flex items-center gap-2">
           <AlertCircle size={16} />
           {error}
         </div>
       )}
+      
       <div ref={messagesEndRef} />
     </div>
   );
