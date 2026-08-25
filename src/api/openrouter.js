@@ -1,11 +1,30 @@
 import { MODELS } from '../utils/constants';
 
 const API_BASE_URL = 'https://openrouter.ai/api/v1/chat/completions';
-const API_KEY = import.meta.env.VITE_OPENROUTER_API_KEY || import.meta.env.VITE_OPENROUTER1_API_KEY || import.meta.env.VITE_OPENROUTER2_API_KEY || import.meta.env.VITE_OPENROUTER3_API_KEY || import.meta.env.VITE_OPENROUTER4_API_KEY || import.meta.env.VITE_OPENROUTER5_API_KEY;
+
+// Sabhi valid keys ko collect karein
+const API_KEYS = [
+  import.meta.env.VITE_OPENROUTER_API_KEY,
+  import.meta.env.VITE_OPENROUTER1_API_KEY,
+  import.meta.env.VITE_OPENROUTER2_API_KEY,
+  import.meta.env.VITE_OPENROUTER3_API_KEY,
+  import.meta.env.VITE_OPENROUTER4_API_KEY,
+  import.meta.env.VITE_OPENROUTER5_API_KEY
+].filter(Boolean);
+
+// Array ko randomize karne ke liye helper function (Fisher-Yates Shuffle)
+const getShuffledKeys = () => {
+  const shuffled = [...API_KEYS];
+  for (let i = shuffled.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+  }
+  return shuffled;
+};
 
 export const sendStreamingMessageWithFallback = async (messages, onChunk, onModelFail) => {
-  if (!API_KEY) {
-    throw new Error('API key not configured. Please check your VITE_OPENROUTER_API_KEY in .env file.');
+  if (API_KEYS.length === 0) {
+    throw new Error('No API keys configured. Please check your .env file.');
   }
 
   const modelList = Array.isArray(MODELS) && MODELS.length > 0 ? [...MODELS] : [];
@@ -15,42 +34,53 @@ export const sendStreamingMessageWithFallback = async (messages, onChunk, onMode
 
   let lastError = null;
 
-  for (let i = 0; i < modelList.length; i++) {
-    const model = modelList[i];
+  for (let m = 0; m < modelList.length; m++) {
+    const model = modelList[m];
+    console.log(`🔄 Trying model: ${model} (${m + 1}/${modelList.length})`);
 
-    try {
-      console.log(`🔄 Trying model: ${model} (${i + 1}/${modelList.length})`);
+    // Har request ke liye keys ko randomly shuffle karein
+    const randomizedKeys = getShuffledKeys();
 
-      await sendStreamingMessage(messages, onChunk, model);
+    for (let k = 0; k < randomizedKeys.length; k++) {
+      const apiKey = randomizedKeys[k];
 
-      console.log(`✅ Success with: ${model}`);
-      return { success: true, model };
+      try {
+        await sendStreamingMessage(messages, onChunk, model, apiKey);
 
-    } catch (error) {
-      lastError = error;
-      console.warn(`❌ Model ${model} failed:`, error.message);
+        console.log(`✅ Success with model: ${model}`);
+        return { success: true, model };
 
-      if (onModelFail) {
-        onModelFail(model, error);
+      } catch (error) {
+        lastError = error;
+        console.warn(`❌ Random key attempt #${k + 1} failed for ${model}:`, error.message);
+
+        // Expired (401/403) ya Rate Limited (429) hone par agli random key try karega
+        const isAuthOrLimitError = error.status === 401 || error.status === 403 || error.status === 429;
+        
+        if (!isAuthOrLimitError) {
+          // Model down hone par dusri keys try karne ke bajaye agla model try karega
+          break;
+        }
+
+        if (k < randomizedKeys.length - 1) {
+          await new Promise(resolve => setTimeout(resolve, 500));
+        }
       }
+    }
 
-      // Invalid API key hone par aage ke models try karne ka fayda nahi
-      if (error.status === 401 || error.status === 403) {
-        break;
-      }
+    if (onModelFail) {
+      onModelFail(model, lastError);
+    }
 
-      // Next model try karne se pehle chhota delay
-      if (i < modelList.length - 1) {
-        await new Promise(resolve => setTimeout(resolve, 800));
-      }
+    if (m < modelList.length - 1) {
+      await new Promise(resolve => setTimeout(resolve, 800));
     }
   }
 
-  throw new Error(`All models failed. Last error: ${lastError?.message || 'Unknown error'}`);
+  throw new Error(`All models and API keys failed. Last error: ${lastError?.message || 'Unknown error'}`);
 };
 
-const sendStreamingMessage = async (messages, onChunk, model) => {
-  // Free models ke compatibility ke liye clean payload
+const sendStreamingMessage = async (messages, onChunk, model, apiKey) => {
   const requestBody = {
     model,
     messages,
@@ -64,7 +94,7 @@ const sendStreamingMessage = async (messages, onChunk, model) => {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      'Authorization': `Bearer ${API_KEY}`,
+      'Authorization': `Bearer ${apiKey}`,
       'HTTP-Referer': window.location.origin,
       'X-Title': 'Shree AI'
     },
@@ -73,49 +103,57 @@ const sendStreamingMessage = async (messages, onChunk, model) => {
 
   if (!response.ok) {
     let errorMessage = `HTTP ${response.status}`;
+    let errorData = null;
     try {
-      const errorData = await response.json();
+      errorData = await response.json();
       errorMessage = errorData.error?.message || errorMessage;
     } catch {
-      // JSON parse fail hone par default error code
+      // JSON parse fallback
     }
     const err = new Error(errorMessage);
     err.status = response.status;
+    err.data = errorData;
     throw err;
+  }
+
+  if (!response.body) {
+    throw new Error('ReadableStream not supported.');
   }
 
   const reader = response.body.getReader();
   const decoder = new TextDecoder('utf-8');
   let buffer = '';
 
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
 
-    buffer += decoder.decode(value, { stream: true });
-    const lines = buffer.split('\n');
-    buffer = lines.pop() || '';
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split('\n');
+      buffer = lines.pop() ?? '';
 
-    for (const line of lines) {
-      const trimmedLine = line.trim();
-      
-      // Ping comments ignore karein
-      if (!trimmedLine || trimmedLine.startsWith(':')) continue;
-      
-      if (trimmedLine.startsWith('data: ')) {
-        const data = trimmedLine.slice(6).trim();
-        if (data === '[DONE]') return;
+      for (const line of lines) {
+        const trimmedLine = line.trim();
+        if (!trimmedLine || trimmedLine.startsWith(':')) continue;
 
-        try {
-          const parsed = JSON.parse(data);
-          const content = parsed.choices?.[0]?.delta?.content;
-          if (content) {
-            onChunk(content, model);
+        if (trimmedLine.startsWith('data: ')) {
+          const data = trimmedLine.slice(6).trim();
+          if (data === '[DONE]') return;
+
+          try {
+            const parsed = JSON.parse(data);
+            const content = parsed.choices?.[0]?.delta?.content;
+            if (content) {
+              onChunk(content, model);
+            }
+          } catch {
+            // Incomplete chunks handle
           }
-        } catch {
-          // Incomplete chunks ko gracefully ignore karein
         }
       }
     }
+  } finally {
+    reader.releaseLock();
   }
 };
