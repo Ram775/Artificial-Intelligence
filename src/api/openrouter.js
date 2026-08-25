@@ -1,433 +1,121 @@
-import axios from 'axios';
+import { MODELS } from '../utils/constants';
 
 const API_BASE_URL = 'https://openrouter.ai/api/v1/chat/completions';
-const TIMEOUT = 30000;
+const API_KEY = import.meta.env.VITE_OPENROUTER_API_KEY || import.meta.env.VITE_OPENROUTER1_API_KEY || import.meta.env.VITE_OPENROUTER2_API_KEY || import.meta.env.VITE_OPENROUTER3_API_KEY || import.meta.env.VITE_OPENROUTER4_API_KEY || import.meta.env.VITE_OPENROUTER5_API_KEY;
 
-// Model performance tracking
-const modelPerformance = new Map();
-
-// Function to send message with fallback
-export const sendMessageWithFallback = async (messages, options = {}) => {
-  const {
-    primaryModel = 'dots-studio/dots-3-note-preview:free',
-    fallbackModels = [
-      'liquid/lfm-2.5-2.6b:free',
-      'nvidia/nemotron-3.5-lightning:free',
-      'thinkingmachines/inkling-small:free',
-      'poolside/laguna-s-2.1:free'
-    ],
-    maxRetries = 5,
-    apiKey = import.meta.env.VITE_OPENROUTER_API_KEY,
-    ...otherOptions
-  } = options;
-
-  if (!apiKey) {
-    throw new Error('API key is required. Please set your OpenRouter API key.');
+export const sendStreamingMessageWithFallback = async (messages, onChunk, onModelFail) => {
+  if (!API_KEY) {
+    throw new Error('API key not configured. Please check your VITE_OPENROUTER_API_KEY in .env file.');
   }
 
-  // Create model list with primary first, then fallbacks
-  const modelList = [primaryModel, ...fallbackModels];
-  let lastError = null;
-  const triedModels = [];
+  const modelList = Array.isArray(MODELS) && MODELS.length > 0 ? [...MODELS] : [];
+  if (modelList.length === 0) {
+    throw new Error('No models found in constants.');
+  }
 
-  for (let i = 0; i < Math.min(modelList.length, maxRetries); i++) {
+  let lastError = null;
+
+  for (let i = 0; i < modelList.length; i++) {
     const model = modelList[i];
-    triedModels.push(model);
-    
+
     try {
-      console.log(`🔄 Attempting with model: ${model} (${i + 1}/${Math.min(modelList.length, maxRetries)})`);
-      
-      const startTime = Date.now();
-      const response = await sendMessage(messages, {
-        ...otherOptions,
-        model,
-        apiKey
-      });
-      const responseTime = Date.now() - startTime;
-      
-      // Track successful response
-      trackModelPerformance(model, true, responseTime);
-      
-      console.log(`✅ Success with model: ${model} (${responseTime}ms)`);
-      
-      return {
-        ...response,
-        _meta: {
-          model,
-          responseTime,
-          attempts: i + 1,
-          fallbackUsed: i > 0,
-          triedModels
-        }
-      };
+      console.log(`🔄 Trying model: ${model} (${i + 1}/${modelList.length})`);
+
+      await sendStreamingMessage(messages, onChunk, model);
+
+      console.log(`✅ Success with: ${model}`);
+      return { success: true, model };
+
     } catch (error) {
       lastError = error;
-      const errorMessage = error.response?.data?.error?.message || error.message;
-      console.warn(`❌ Model ${model} failed: ${errorMessage}`);
-      
-      // Track failed response
-      trackModelPerformance(model, false);
-      
-      // Check if we should continue to next model
-      const shouldContinue = shouldRetryError(error, i, modelList.length, maxRetries);
-      
-      if (!shouldContinue) {
-        break;
-      }
-      
-      // Wait before next attempt (exponential backoff)
-      if (i < modelList.length - 1) {
-        const delay = Math.min(1000 * Math.pow(2, i), 8000);
-        console.log(`⏳ Waiting ${delay}ms before next attempt...`);
-        await new Promise(resolve => setTimeout(resolve, delay));
-      }
-    }
-  }
+      console.warn(`❌ Model ${model} failed:`, error.message);
 
-  throw new Error(`All models failed. Tried: ${triedModels.join(', ')}. Last error: ${lastError?.message || 'Unknown error'}`);
-};
-
-// Function to send streaming message with fallback
-export const sendStreamingMessageWithFallback = async (messages, onChunk, options = {}) => {
-  const {
-    primaryModel = 'dots-studio/dots-3-note-preview:free',
-    fallbackModels = [
-      'liquid/lfm-2.5-2.6b:free',
-      'nvidia/nemotron-3.5-lightning:free',
-      'thinkingmachines/inkling-small:free',
-      'poolside/laguna-s-2.1:free'
-    ],
-    maxRetries = 5,
-    apiKey = import.meta.env.VITE_OPENROUTER_API_KEY,
-    onModelChange = null,
-    onModelFail = null,
-    ...otherOptions
-  } = options;
-
-  if (!apiKey) {
-    throw new Error('API key is required. Please set your OpenRouter API key.');
-  }
-
-  const modelList = [primaryModel, ...fallbackModels];
-  let lastError = null;
-  const triedModels = [];
-
-  for (let i = 0; i < Math.min(modelList.length, maxRetries); i++) {
-    const model = modelList[i];
-    triedModels.push(model);
-    
-    try {
-      console.log(`🔄 Streaming with model: ${model} (${i + 1}/${Math.min(modelList.length, maxRetries)})`);
-      
-      // Notify model change
-      if (onModelChange) {
-        onModelChange(model);
-      }
-      
-      const startTime = Date.now();
-      await sendStreamingMessage(messages, onChunk, {
-        ...otherOptions,
-        model,
-        apiKey
-      });
-      const responseTime = Date.now() - startTime;
-      
-      // Track successful response
-      trackModelPerformance(model, true, responseTime);
-      
-      console.log(`✅ Streaming success with model: ${model} (${responseTime}ms)`);
-      
-      return {
-        _meta: {
-          model,
-          responseTime,
-          attempts: i + 1,
-          fallbackUsed: i > 0,
-          triedModels
-        }
-      };
-    } catch (error) {
-      lastError = error;
-      const errorMessage = error.response?.data?.error?.message || error.message;
-      console.warn(`❌ Streaming model ${model} failed: ${errorMessage}`);
-      
-      // Notify model failure
       if (onModelFail) {
         onModelFail(model, error);
       }
-      
-      // Track failed response
-      trackModelPerformance(model, false);
-      
-      const shouldContinue = shouldRetryError(error, i, modelList.length, maxRetries);
-      
-      if (!shouldContinue) {
+
+      // Invalid API key hone par aage ke models try karne ka fayda nahi
+      if (error.status === 401 || error.status === 403) {
         break;
       }
-      
+
+      // Next model try karne se pehle chhota delay
       if (i < modelList.length - 1) {
-        const delay = Math.min(1000 * Math.pow(2, i), 8000);
-        console.log(`⏳ Waiting ${delay}ms before next attempt...`);
-        await new Promise(resolve => setTimeout(resolve, delay));
+        await new Promise(resolve => setTimeout(resolve, 800));
       }
     }
   }
 
-  throw new Error(`All models failed for streaming. Tried: ${triedModels.join(', ')}. Last error: ${lastError?.message || 'Unknown error'}`);
+  throw new Error(`All models failed. Last error: ${lastError?.message || 'Unknown error'}`);
 };
 
-// Core sendMessage function
-export const sendMessage = async (messages, options = {}) => {
-  const {
-    model = 'dots-studio/dots-3-note-preview:free',
-    apiKey = import.meta.env.VITE_OPENROUTER_API_KEY,
-    reasoningEnabled = true,
-    maxTokens = 1000,
-    temperature = 0.7,
-    topP = 0.9,
-    stream = false,
-    timeout = TIMEOUT,
-    ...otherOptions
-  } = options;
-
+const sendStreamingMessage = async (messages, onChunk, model) => {
+  // Free models ke compatibility ke liye clean payload
   const requestBody = {
     model,
     messages,
-    reasoning: { enabled: reasoningEnabled },
-    max_tokens: maxTokens,
-    temperature,
-    top_p: topP,
-    stream,
-    ...otherOptions
+    max_tokens: 2048,
+    temperature: 0.7,
+    top_p: 0.9,
+    stream: true
   };
 
-  try {
-    const response = await axios.post(API_BASE_URL, requestBody, {
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${apiKey}`,
-        'HTTP-Referer': options.siteUrl || window.location.origin,
-        'X-Title': options.siteName || 'AI Chat Bot'
-      },
-      timeout
-    });
+  const response = await fetch(API_BASE_URL, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${API_KEY}`,
+      'HTTP-Referer': window.location.origin,
+      'X-Title': 'Shree AI'
+    },
+    body: JSON.stringify(requestBody)
+  });
 
-    return response.data;
-  } catch (error) {
-    console.error('API Error:', error.response?.data || error.message);
-    throw error;
-  }
-};
-
-// Core sendStreamingMessage function
-export const sendStreamingMessage = async (messages, onChunk, options = {}) => {
-  const {
-    model = 'dots-studio/dots-3-note-preview:free',
-    apiKey = import.meta.env.VITE_OPENROUTER_API_KEY,
-    reasoningEnabled = true,
-    maxTokens = 1000,
-    temperature = 0.7,
-    topP = 0.9,
-    timeout = TIMEOUT,
-    ...otherOptions
-  } = options;
-
-  const requestBody = {
-    model,
-    messages,
-    reasoning: { enabled: reasoningEnabled },
-    max_tokens: maxTokens,
-    temperature,
-    top_p: topP,
-    stream: true,
-    ...otherOptions
-  };
-
-  try {
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), timeout);
-
-    const response = await fetch(API_BASE_URL, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${apiKey}`,
-        'HTTP-Referer': options.siteUrl || window.location.origin,
-        'X-Title': options.siteName || 'AI Chat Bot'
-      },
-      body: JSON.stringify(requestBody),
-      signal: controller.signal
-    });
-
-    clearTimeout(timeoutId);
-
-    if (!response.ok) {
+  if (!response.ok) {
+    let errorMessage = `HTTP ${response.status}`;
+    try {
       const errorData = await response.json();
-      throw new Error(errorData.error?.message || 'Failed to get streaming response');
+      errorMessage = errorData.error?.message || errorMessage;
+    } catch {
+      // JSON parse fail hone par default error code
     }
-
-    const reader = response.body.getReader();
-    const decoder = new TextDecoder();
-    let buffer = '';
-
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-
-      buffer += decoder.decode(value, { stream: true });
-      const lines = buffer.split('\n');
-      buffer = lines.pop() || '';
-
-      for (const line of lines) {
-        if (line.startsWith('data: ')) {
-          const data = line.slice(6);
-          if (data === '[DONE]') continue;
-          
-          try {
-            const parsed = JSON.parse(data);
-            const content = parsed.choices?.[0]?.delta?.content;
-            if (content) {
-              onChunk(content);
-            }
-          } catch (e) {
-            console.error('Error parsing stream data:', e);
-          }
-        }
-      }
-    }
-  } catch (error) {
-    console.error('Streaming Error:', error);
-    throw error;
-  }
-};
-
-// Model performance tracking
-const trackModelPerformance = (modelId, success, responseTime = 0) => {
-  if (!modelPerformance.has(modelId)) {
-    modelPerformance.set(modelId, {
-      successCount: 0,
-      failCount: 0,
-      totalResponseTime: 0,
-      requestCount: 0,
-      lastUsed: Date.now()
-    });
+    const err = new Error(errorMessage);
+    err.status = response.status;
+    throw err;
   }
 
-  const stats = modelPerformance.get(modelId);
-  stats.requestCount++;
-  stats.lastUsed = Date.now();
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder('utf-8');
+  let buffer = '';
 
-  if (success) {
-    stats.successCount++;
-    stats.totalResponseTime += responseTime;
-  } else {
-    stats.failCount++;
-  }
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
 
-  modelPerformance.set(modelId, stats);
-};
+    buffer += decoder.decode(value, { stream: true });
+    const lines = buffer.split('\n');
+    buffer = lines.pop() || '';
 
-// Get model performance stats
-export const getModelPerformance = () => {
-  const result = {};
-  for (const [modelId, stats] of modelPerformance) {
-    const total = stats.successCount + stats.failCount;
-    result[modelId] = {
-      successRate: total > 0 ? (stats.successCount / total) * 100 : 0,
-      avgResponseTime: stats.successCount > 0 ? stats.totalResponseTime / stats.successCount : 0,
-      requestCount: stats.requestCount,
-      successCount: stats.successCount,
-      failCount: stats.failCount,
-      lastUsed: stats.lastUsed
-    };
-  }
-  return result;
-};
-
-// Get best performing model
-export const getBestModel = () => {
-  let bestModel = null;
-  let bestScore = -1;
-
-  for (const [modelId, stats] of modelPerformance) {
-    const total = stats.successCount + stats.failCount;
-    if (total > 0) {
-      const successRate = stats.successCount / total;
-      const avgTime = stats.successCount > 0 ? stats.totalResponseTime / stats.successCount : Infinity;
-      // Score: success rate weighted heavily, with slight penalty for slow responses
-      const score = successRate * 100 - (avgTime / 100);
+    for (const line of lines) {
+      const trimmedLine = line.trim();
       
-      if (score > bestScore) {
-        bestScore = score;
-        bestModel = modelId;
-      }
-    }
-  }
+      // Ping comments ignore karein
+      if (!trimmedLine || trimmedLine.startsWith(':')) continue;
+      
+      if (trimmedLine.startsWith('data: ')) {
+        const data = trimmedLine.slice(6).trim();
+        if (data === '[DONE]') return;
 
-  return bestModel;
-};
-
-// Error handling logic
-const shouldRetryError = (error, attempt, totalModels, maxRetries) => {
-  // Don't retry if we've reached the limit
-  if (attempt >= maxRetries - 1 || attempt >= totalModels - 1) {
-    return false;
-  }
-
-  const status = error.response?.status;
-  
-  // Don't retry on authentication errors
-  if (status === 401 || status === 403) {
-    return false;
-  }
-  
-  // Don't retry on invalid request
-  if (status === 400) {
-    return false;
-  }
-
-  // Retry on rate limits, timeouts, server errors
-  if (status === 429 || status === 500 || status === 502 || status === 503 || status === 504) {
-    return true;
-  }
-
-  // Retry on network errors
-  if (error.code === 'ECONNABORTED' || error.code === 'ETIMEDOUT') {
-    return true;
-  }
-
-  // For other errors, retry if it's not a client error (4xx)
-  return !(status >= 400 && status < 500);
-};
-
-// Function to get smart model selection based on performance
-export const getSmartModelSelection = (models, strategy = 'smart') => {
-  const performance = getModelPerformance();
-  const availableModels = models.filter(m => performance[m]?.successRate > 0 || !performance[m]);
-
-  switch (strategy) {
-    case 'smart': {
-      // Sort by success rate, then by response time
-      return availableModels.sort((a, b) => {
-        const aStats = performance[a];
-        const bStats = performance[b];
-        
-        if (!aStats) return -1;
-        if (!bStats) return 1;
-        
-        // If one has significantly better success rate
-        if (aStats.successRate !== bStats.successRate) {
-          return bStats.successRate - aStats.successRate;
+        try {
+          const parsed = JSON.parse(data);
+          const content = parsed.choices?.[0]?.delta?.content;
+          if (content) {
+            onChunk(content, model);
+          }
+        } catch {
+          // Incomplete chunks ko gracefully ignore karein
         }
-        
-        // Then by response time
-        return (aStats.avgResponseTime || Infinity) - (bStats.avgResponseTime || Infinity);
-      });
-    }
-
-    default: {
-      // Sequential (default)
-      return availableModels;
+      }
     }
   }
 };

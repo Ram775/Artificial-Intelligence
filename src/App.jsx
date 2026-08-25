@@ -1,27 +1,12 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { ChatProvider } from './context/ChatContext';
 import ChatContainer from './components/Chat/ChatContainer';
-import SettingsModal from './components/Settings/SettingsModal';
-import { Settings } from 'lucide-react';
-import './App.css';
 
 function App() {
-  const [showSettings, setShowSettings] = useState(false);
-
   return (
     <ChatProvider>
-      <div className="app-container">
-        <button 
-          className="settings-toggle"
-          onClick={() => setShowSettings(!showSettings)}
-        >
-          <Settings size={16} />
-          Settings
-        </button>
+      <div className="w-full h-full bg-white rounded-none md:rounded-2xl md:shadow-2xl flex flex-col overflow-hidden md:max-w-[2400px] md:h-[100vh]">
         <ChatContainer />
-        {showSettings && (
-          <SettingsModal onClose={() => setShowSettings(false)} />
-        )}
       </div>
     </ChatProvider>
   );

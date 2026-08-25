@@ -1,63 +1,28 @@
-export const DEFAULT_MODEL = 'dots-studio/dots-3-note-preview:free';
-
-export const AVAILABLE_MODELS = [
-  { 
-    id: 'dots-studio/dots-3-note-preview:free', 
-    name: 'Dots 3 Note (Free)',
-    provider: 'Dots Studio',
-    free: true,
-    description: 'Fast and efficient model'
-  },
-  { 
-    id: 'liquid/lfm-2.5-2.6b:free', 
-    name: 'LFM 2.5-2.6B (Free)',
-    provider: 'Liquid AI',
-    free: true,
-    description: 'Lightweight language model'
-  },
-  { 
-    id: 'nvidia/nemotron-3.5-lightning:free', 
-    name: 'Nemotron 3.5 Lightning (Free)',
-    provider: 'NVIDIA',
-    free: true,
-    description: 'Fast inference model'
-  },
-  { 
-    id: 'thinkingmachines/inkling-small:free', 
-    name: 'Inkling Small (Free)',
-    provider: 'Thinking Machines',
-    free: true,
-    description: 'Small and efficient model'
-  },
-  { 
-    id: 'poolside/laguna-s-2.1:free', 
-    name: 'Laguna S 2.1 (Free)',
-    provider: 'Poolside',
-    free: true,
-    description: 'Balanced performance model'
-  }
+// All available free models
+export const MODELS = [
+  "google/gemma-4-31b-it:free",
+  'dots-studio/dots-3-note-preview:free',
+  "google/gemma-4-26b-a4b-it:free",
+  "cohere/north-mini-code:free",
+  'nvidia/nemotron-3.5-lightning:free',
+  "z-ai/glm-5.2:free",
+  'thinkingmachines/inkling-small:free',
+  'poolside/laguna-s-2.1:free',
+  'liquid/lfm-2.5-2.6b:free',
+  "minimax/minimax-m2.7:free",
 ];
 
-export const FREE_MODELS_ONLY = true;
+// Default model (first one)
+export const DEFAULT_MODEL = MODELS[0];
 
+// Default settings (hidden from user)
 export const DEFAULT_SETTINGS = {
   model: DEFAULT_MODEL,
-  fallbackModels: [
-    'liquid/lfm-2.5-2.6b:free',
-    'nvidia/nemotron-3.5-lightning:free',
-    'thinkingmachines/inkling-small:free',
-    'poolside/laguna-s-2.1:free'
-  ],
+  fallbackModels: MODELS.slice(1), // All other models as fallback
   reasoningEnabled: true,
   maxTokens: 1000,
   temperature: 0.7,
   topP: 0.9,
   streamEnabled: true,
-  maxRetries: 5,
-  timeout: 30000
-};
-
-export const FALLBACK_STRATEGIES = {
-  SEQUENTIAL: 'sequential',
-  SMART: 'smart'
+  maxRetries: MODELS.length // Try all models
 };
