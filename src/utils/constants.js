@@ -1,16 +1,16 @@
 // All available free models
 export const MODELS = [
 
-  'dots-studio/dots-3-note-preview:free',
-  "cohere/north-mini-code:free",
   'nvidia/nemotron-3.5-lightning:free',
-  "z-ai/glm-5.2:free",
-  'thinkingmachines/inkling-small:free',
-  'poolside/laguna-s-2.1:free',
   'liquid/lfm-2.5-2.6b:free',
-  "minimax/minimax-m2.7:free",
-    "google/gemma-4-31b-it:free",
-    "google/gemma-4-26b-a4b-it:free",
+  'cohere/north-mini-code:free',
+    'poolside/laguna-s-2.1:free',
+  'dots-studio/dots-3-note-preview:free',
+  'google/gemma-4-26b-a4b-it:free',
+  'google/gemma-4-31b-it:free',
+  'thinkingmachines/inkling-small:free',
+  'minimax/minimax-m2.7:free',
+  'z-ai/glm-5.2:free',
 ];
 
 // Default model (first one)
